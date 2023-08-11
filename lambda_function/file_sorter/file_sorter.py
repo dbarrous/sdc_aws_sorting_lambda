@@ -26,8 +26,6 @@ from sdc_aws_utils.config import (
     get_all_instrument_buckets,
 )
 
-from hermes_core.util import create_science_filename
-
 # Configure logging levels and format
 configure_logger()
 
