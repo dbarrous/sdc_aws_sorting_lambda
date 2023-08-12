@@ -18,4 +18,7 @@ jobs:
     - name: Run tests
       run: |
         pytest -s tests --cov=lambda_function/ --cov-report=html --log-cli-level=INFO 
-
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
