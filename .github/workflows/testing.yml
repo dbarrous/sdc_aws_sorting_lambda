@@ -20,7 +20,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip git+https://github.com/HERMES-SOC/hermes_core.git
+        python -m pip install --upgrade pip git+https://github.com/HERMES-SOC/hermes_core.git moto
         python -m pip install -r requirements.txt --upgrade
 
     - name: Run tests
