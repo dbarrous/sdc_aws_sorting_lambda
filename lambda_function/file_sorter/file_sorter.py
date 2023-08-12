@@ -97,8 +97,6 @@ class FileSorter:
         timestream_client: type = None,
         slack_token: str = None,
         slack_channel: str = None,
-        slack_retries: int = 3,
-        slack_retry_delay: int = 5,
     ):
         """
         Initialize the FileSorter object.
@@ -111,9 +109,6 @@ class FileSorter:
             if self.slack_token and self.slack_channel
             else None
         )
-
-        self.slack_retries = slack_retries
-        self.slack_retry_delay = slack_retry_delay
 
         self.file_key = file_key
         self.instrument_bucket_name = s3_bucket
@@ -130,7 +125,9 @@ class FileSorter:
 
         self.science_file = parser(self.file_key)
         self.incoming_bucket_name = s3_bucket
-        self.destination_bucket = get_instrument_bucket(self.science_file["instrument"])
+        self.destination_bucket = get_instrument_bucket(
+            self.science_file["instrument"], environment
+        )
         self.dry_run = dry_run
         if self.dry_run:
             log.warning("Performing Dry Run - Files will not be copied/removed")
