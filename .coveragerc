@@ -1,0 +1,10 @@
+# .coveragerc configuration for coverage.py
+# This file is used to configure the pytest-cov plugin
+
+# Configuration for the 'run' command
+[run]
+
+# Files to omit from coverage reports
+# We omit the lambda_function.py because it's just a proxy to the handle_event function in file_sorter.
+omit =
+    lambda_function/lambda_function.py
