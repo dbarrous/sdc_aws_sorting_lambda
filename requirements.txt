@@ -2,4 +2,3 @@ sdc_aws_utils @ git+https://github.com/HERMES-SOC/sdc_aws_utils.git
 pytest	
 pytest-astropy 	
 pytest-cov
-moto
