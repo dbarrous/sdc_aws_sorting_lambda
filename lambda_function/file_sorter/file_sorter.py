@@ -156,7 +156,8 @@ class FileSorter:
                 return None
 
             log.info(
-                f"Copying {self.file_key} from {self.incoming_bucket_name} to {self.destination_bucket}"
+                f"Copying {self.file_key} from {self.incoming_bucket_name}"
+                f"to {self.destination_bucket}"
             )
 
             if not self.dry_run:
