@@ -169,30 +169,27 @@ class FileSorter:
                     file_key=self.file_key,
                     new_file_key=new_file_key,
                 )
-                try:
-                    if self.slack_client:
-                        # If Slack is enabled, send a slack notification
-                        send_pipeline_notification(
-                            slack_client=self.slack_client,
-                            slack_channel=self.slack_channel,
-                            path=new_file_key,
-                            alert_type="sorted",
-                        )
 
-                    # If Timestream is enabled, log the file
-                    if self.timestream_client:
-                        log_to_timestream(
-                            timestream_client=self.timestream_client,
-                            action_type="PUT",
-                            file_key=self.file_key,
-                            new_file_key=new_file_key,
-                            source_bucket=self.incoming_bucket_name,
-                            destination_bucket=self.destination_bucket,
-                            environment=self.environment,
-                        )
+                # If Slack is enabled, send a slack notification
+                if self.slack_client:
+                    send_pipeline_notification(
+                        slack_client=self.slack_client,
+                        slack_channel=self.slack_channel,
+                        path=new_file_key,
+                        alert_type="sorted",
+                    )
 
-                except Exception as e:
-                    log.error(f"Error Occurred: {e}")
+                # If Timestream is enabled, log the file
+                if self.timestream_client:
+                    log_to_timestream(
+                        timestream_client=self.timestream_client,
+                        action_type="PUT",
+                        file_key=self.file_key,
+                        new_file_key=new_file_key,
+                        source_bucket=self.incoming_bucket_name,
+                        destination_bucket=self.destination_bucket,
+                        environment=self.environment,
+                    )
 
             log.info(
                 f"File {self.file_key} Successfully Moved to {self.destination_bucket}"
