@@ -123,7 +123,6 @@ class FileSorter:
                 )
 
         self.file_key = file_key
-        self.instrument_bucket_name = s3_bucket
 
         try:
             self.timestream_client = (
