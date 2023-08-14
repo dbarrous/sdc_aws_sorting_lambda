@@ -155,61 +155,47 @@ class FileSorter:
                 log.warning(f"Error parsing file key: {self.file_key}")
                 return None
 
-            self._copy_from_source_to_destination(
-                source_bucket=self.incoming_bucket_name,
-                file_key=self.file_key,
-                new_file_key=new_file_key,
-                destination_bucket=self.destination_bucket,
+            log.info(
+                f"Copying {self.file_key} from {self.incoming_bucket_name} to {self.destination_bucket}"
+            )
+
+            if not self.dry_run:
+                # Copy file from source to destination
+                copy_file_in_s3(
+                    s3_client=self.s3_client,
+                    source_bucket=self.incoming_bucket_name,
+                    destination_bucket=self.destination_bucket,
+                    file_key=self.file_key,
+                    new_file_key=new_file_key,
+                )
+                try:
+                    if self.slack_client:
+                        # If Slack is enabled, send a slack notification
+                        send_pipeline_notification(
+                            slack_client=self.slack_client,
+                            slack_channel=self.slack_channel,
+                            path=new_file_key,
+                            alert_type="sorted",
+                        )
+
+                    # If Timestream is enabled, log the file
+                    if self.timestream_client:
+                        log_to_timestream(
+                            timestream_client=self.timestream_client,
+                            action_type="PUT",
+                            file_key=self.file_key,
+                            new_file_key=new_file_key,
+                            source_bucket=self.incoming_bucket_name,
+                            destination_bucket=self.destination_bucket,
+                            environment=self.environment,
+                        )
+
+                except Exception as e:
+                    log.error(f"Error Occurred: {e}")
+
+            log.info(
+                f"File {self.file_key} Successfully Moved to {self.destination_bucket}"
             )
 
         else:
             raise ValueError("File does not exist in bucket")
-
-    def _copy_from_source_to_destination(
-        self,
-        source_bucket=None,
-        destination_bucket=None,
-        file_key=None,
-        new_file_key=None,
-    ):
-        """
-        Copy a file from the S3 incoming bucket using the bucket key
-        to the destination bucket.
-        """
-        log.info(f"Copying {file_key} from {source_bucket} to {destination_bucket}")
-
-        if not self.dry_run:
-            # Copy file from source to destination
-            copy_file_in_s3(
-                s3_client=self.s3_client,
-                source_bucket=source_bucket,
-                destination_bucket=destination_bucket,
-                file_key=file_key,
-                new_file_key=new_file_key,
-            )
-            try:
-                if self.slack_client:
-                    # If Slack is enabled, send a slack notification
-                    send_pipeline_notification(
-                        slack_client=self.slack_client,
-                        slack_channel=self.slack_channel,
-                        path=new_file_key,
-                        alert_type="sorted",
-                    )
-
-                # If Timestream is enabled, log the file
-                if self.timestream_client:
-                    log_to_timestream(
-                        timestream_client=self.timestream_client,
-                        action_type="PUT",
-                        file_key=file_key,
-                        new_file_key=new_file_key,
-                        source_bucket=source_bucket,
-                        destination_bucket=destination_bucket,
-                        environment=self.environment,
-                    )
-
-            except Exception as e:
-                log.error(f"Error Occurred: {e}")
-
-        log.info(f"File {file_key} Successfully Moved to {destination_bucket}")
