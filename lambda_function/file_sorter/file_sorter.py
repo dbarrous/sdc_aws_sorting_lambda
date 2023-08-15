@@ -6,6 +6,7 @@ import os
 import json
 from pathlib import Path
 
+from slack_sdk.errors import SlackApiError
 
 from sdc_aws_utils.logging import log, configure_logger
 from sdc_aws_utils.aws import (
@@ -101,17 +102,27 @@ class FileSorter:
         """
         Initialize the FileSorter object.
         """
-        self.slack_token = slack_token or os.getenv("SDC_AWS_SLACK_TOKEN")
-        self.slack_channel = slack_channel or os.getenv("SDC_AWS_SLACK_CHANNEL")
+        try:
+            # Initialize the slack client
+            self.slack_client = get_slack_client(
+                slack_token=os.getenv("SDC_AWS_SLACK_TOKEN")
+            )
 
-        self.slack_client = (
-            get_slack_client(self.slack_token)
-            if self.slack_token and self.slack_channel
-            else None
-        )
+            # Initialize the slack channel
+            self.slack_channel = os.getenv("SDC_AWS_SLACK_CHANNEL")
+
+        except SlackApiError as e:
+            error_code = int(e.response["Error"]["Code"])
+            self.slack_client = None
+            if error_code == 404:
+                log.error(
+                    {
+                        "status": "ERROR",
+                        "message": "Slack Token is invalid",
+                    }
+                )
 
         self.file_key = file_key
-        self.instrument_bucket_name = s3_bucket
 
         try:
             self.timestream_client = (
@@ -155,41 +166,23 @@ class FileSorter:
                 log.warning(f"Error parsing file key: {self.file_key}")
                 return None
 
-            self._copy_from_source_to_destination(
-                source_bucket=self.incoming_bucket_name,
-                file_key=self.file_key,
-                new_file_key=new_file_key,
-                destination_bucket=self.destination_bucket,
+            log.info(
+                f"Copying {self.file_key} from {self.incoming_bucket_name}"
+                f"to {self.destination_bucket}"
             )
 
-        else:
-            raise ValueError("File does not exist in bucket")
+            if not self.dry_run:
+                # Copy file from source to destination
+                copy_file_in_s3(
+                    s3_client=self.s3_client,
+                    source_bucket=self.incoming_bucket_name,
+                    destination_bucket=self.destination_bucket,
+                    file_key=self.file_key,
+                    new_file_key=new_file_key,
+                )
 
-    def _copy_from_source_to_destination(
-        self,
-        source_bucket=None,
-        destination_bucket=None,
-        file_key=None,
-        new_file_key=None,
-    ):
-        """
-        Copy a file from the S3 incoming bucket using the bucket key
-        to the destination bucket.
-        """
-        log.info(f"Copying {file_key} from {source_bucket} to {destination_bucket}")
-
-        if not self.dry_run:
-            # Copy file from source to destination
-            copy_file_in_s3(
-                s3_client=self.s3_client,
-                source_bucket=source_bucket,
-                destination_bucket=destination_bucket,
-                file_key=file_key,
-                new_file_key=new_file_key,
-            )
-            try:
+                # If Slack is enabled, send a slack notification
                 if self.slack_client:
-                    # If Slack is enabled, send a slack notification
                     send_pipeline_notification(
                         slack_client=self.slack_client,
                         slack_channel=self.slack_channel,
@@ -202,14 +195,16 @@ class FileSorter:
                     log_to_timestream(
                         timestream_client=self.timestream_client,
                         action_type="PUT",
-                        file_key=file_key,
+                        file_key=self.file_key,
                         new_file_key=new_file_key,
-                        source_bucket=source_bucket,
-                        destination_bucket=destination_bucket,
+                        source_bucket=self.incoming_bucket_name,
+                        destination_bucket=self.destination_bucket,
                         environment=self.environment,
                     )
 
-            except Exception as e:
-                log.error(f"Error Occurred: {e}")
+            log.info(
+                f"File {self.file_key} Successfully Moved to {self.destination_bucket}"
+            )
 
-        log.info(f"File {file_key} Successfully Moved to {destination_bucket}")
+        else:
+            raise ValueError("File does not exist in bucket")
