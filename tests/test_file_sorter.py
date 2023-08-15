@@ -5,6 +5,7 @@ from moto import mock_s3, mock_timestreamwrite
 from sdc_aws_utils.aws import create_s3_file_key
 from pathlib import Path
 from slack_sdk.errors import SlackApiError
+from unittest.mock import patch
 
 # Constants
 os.environ["SDC_AWS_CONFIG_FILE_PATH"] = "lambda_function/config.yaml"
@@ -106,6 +107,14 @@ def setup_environment(s3_client, timestream_client):
         pass
 
     os.environ["LAMBDA_ENVIRONMENT"] = ENVIRONMENT
+    os.environ["SDC_AWS_SLACK_TOKEN"] = "test-token"
+    os.environ["SDC_AWS_SLACK_CHANNEL"] = "test-channel"
+
+
+def mock_failed_get_slack_client():
+    """Raise a SlackApiError with a 404 error."""
+    response = {"Error": {"Code": "404"}}
+    raise SlackApiError(response=response, message="Invalid token")
 
 
 # Tests handle_event Function
@@ -151,78 +160,37 @@ def test_handle_event_trigger(s3_client, timestream_client):
 
 # Tests FileSorter class
 @mock_s3
+def test_file_sorter_dry_run(s3_client, timestream_client):
+    # Set up environment
+    setup_environment(s3_client, timestream_client)
+
+    file_sorter.FileSorter(
+        s3_bucket=INCOMING_BUCKET,
+        file_key=TEST_L0_FILE,
+        environment=ENVIRONMENT,
+        dry_run=True,
+        s3_client=s3_client,
+        timestream_client=timestream_client,
+    )
+
+    # Check that the file was not copied during a dry run
+    assert not s3_client.list_objects(Bucket=TEST_BUCKET).get("Contents")
+
+
+@mock_s3
 def test_file_sorter(s3_client, timestream_client):
     # Set up environment
     setup_environment(s3_client, timestream_client)
 
     file_sorter.FileSorter(
-        s3_bucket=INCOMING_BUCKET,
-        file_key=TEST_L0_FILE,
-        environment=ENVIRONMENT,
-        dry_run=True,
+        INCOMING_BUCKET,
+        TEST_L0_FILE,
+        ENVIRONMENT,
+        dry_run=False,
         s3_client=s3_client,
         timestream_client=timestream_client,
     )
 
-    # Check that the file was not copied during a dry run
-    assert not s3_client.list_objects(Bucket=TEST_BUCKET).get("Contents")
-
-    try:
-        file_sorter.FileSorter(
-            INCOMING_BUCKET,
-            TEST_L0_FILE,
-            ENVIRONMENT,
-            dry_run=False,
-            s3_client=s3_client,
-            timestream_client=timestream_client,
-        )
-    except FileNotFoundError as e:
-        assert e is not None
-
-    path_file = Path(TEST_L0_FILE).name
-
-    # Check that the file was copied to the correct HERMES folder
-    assert s3_client.list_objects(
-        Bucket=TEST_BUCKET,
-    ).get(
-        "Contents"
-    )[0].get(
-        "Key"
-    ) == create_s3_file_key(parser, path_file)
-
-
-@mock_s3
-def test_file_sorter_with_slack(s3_client, timestream_client):
-    # Set up environment
-    setup_environment(s3_client, timestream_client)
-
-    file_sorter.FileSorter(
-        s3_bucket=INCOMING_BUCKET,
-        file_key=TEST_L0_FILE,
-        environment=ENVIRONMENT,
-        dry_run=True,
-        s3_client=s3_client,
-        timestream_client=timestream_client,
-        slack_token="test-token",
-        slack_channel="test-channel",
-    )
-
-    # Check that the file was not copied during a dry run
-    assert not s3_client.list_objects(Bucket=TEST_BUCKET).get("Contents")
-
-    try:
-        file_sorter.FileSorter(
-            INCOMING_BUCKET,
-            TEST_L0_FILE,
-            "",
-            dry_run=False,
-            s3_client=s3_client,
-            timestream_client=timestream_client,
-            slack_token="test-token",
-            slack_channel="test-channel",
-        )
-    except SlackApiError as e:
-        assert e is not None
     path_file = Path(TEST_L0_FILE).name
 
     # Check that the file was copied to the correct HERMES folder
@@ -247,7 +215,7 @@ def test_file_sorter_missing_file(s3_client, timestream_client):
             ENVIRONMENT,
             dry_run=True,
         )
-
+        assert False
     except ValueError as e:
         assert e is not None
 
@@ -266,7 +234,7 @@ def test_file_sorter_bad_file(s3_client, timestream_client):
             ENVIRONMENT,
             dry_run=True,
         )
-
+        assert False
     except ValueError as e:
         assert e is not None
 
@@ -277,30 +245,36 @@ def test_file_sorter_bad_file(s3_client, timestream_client):
 def test_file_sorter_missing_s3_bucket(s3_client):
     try:
         file_sorter.FileSorter(
-            INCOMING_BUCKET,
+            TEST_BUCKET,
             TEST_L0_FILE,
             ENVIRONMENT,
             dry_run=False,
             s3_client=s3_client,
         )
+        assert False
     except Exception as e:
         assert e is not None
 
 
 @mock_s3
 def test_file_sorter_missing_timestream(s3_client):
-    s3_client.create_bucket(Bucket=TEST_BUCKET)
-    s3_client.create_bucket(Bucket=INCOMING_BUCKET)
-    s3_client.put_object(Bucket=INCOMING_BUCKET, Key=TEST_L0_FILE, Body=b"test file")
+    test_incoming_bucket = f"dev-{INCOMING_BUCKET}"
+    test_target_bucket = f"dev-{TEST_BUCKET}"
+    s3_client.create_bucket(Bucket=test_incoming_bucket)
+    s3_client.create_bucket(Bucket=test_target_bucket)
+    s3_client.put_object(
+        Bucket=test_incoming_bucket, Key=TEST_L0_FILE, Body=b"test file"
+    )
     try:
         file_sorter.FileSorter(
-            INCOMING_BUCKET,
+            test_incoming_bucket,
             TEST_L0_FILE,
-            ENVIRONMENT,
+            "DEVELOPMENT",
             dry_run=False,
             s3_client=s3_client,
+            timestream_client="Invalid",
         )
+        # Should not reach here
+        assert False
     except Exception as e:
         assert e is not None
-
-    assert s3_client.list_objects(Bucket=TEST_BUCKET).get("Contents")

@@ -96,8 +96,6 @@ class FileSorter:
         dry_run=False,
         s3_client: type = None,
         timestream_client: type = None,
-        slack_token: str = None,
-        slack_channel: str = None,
     ):
         """
         Initialize the FileSorter object.
