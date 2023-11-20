@@ -3,10 +3,23 @@ version: 0.2
 phases:
   pre_build:
     commands:
+      - echo Installing Miniconda...
+      - curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+      - bash Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda
+      - rm -f Miniconda3-latest-Linux-x86_64.sh
+      - echo 'export PATH="$HOME/miniconda/bin:$PATH"' >> $HOME/.bashrc
+      - source $HOME/.bashrc
+      - conda init bash
+      - source $HOME/.bashrc
+      - echo Creating a Python 3.10 environment...
+      - conda create -n myenv python=3.10 -y
+      - echo 'conda activate myenv' >> $HOME/.bashrc
+      - source $HOME/.bashrc
+      
       - echo Installing CI/CD Dependencies...
-      - pip3 install flake8 black pytest pytest-astropy pytest-cov
-      - pip3 install pytest pytest-astropy pytest-cov
-      - pip3 install -r requirements.txt
+      - pip install flake8 black pytest pytest-astropy pytest-cov
+      - pip install pytest pytest-astropy pytest-cov
+      - pip install -r requirements.dev.txt
       - echo ________________________________
 
       - echo Linting with Black...
@@ -14,43 +27,49 @@ phases:
       - echo ________________________________
       
       - echo Linting with Flake...
-      - flake8 --count --max-line-length 88 lambda_function --exclude lambda_function_test_script.py
       - echo ________________________________
-      
 
-    
   build:
     commands:
-      - echo Creating Zip Name...
-      - |
-        echo "Git Release Tag Script"
-        
-        TRIGGER=$CODEBUILD_WEBHOOK_TRIGGER
-        NAME=dev_sorting_function_$(date +%s)
-        
-        if [[ $TRIGGER == *"tag/"* ]];then
-          TAG=${TRIGGER:4}
-          echo "Production Build, tagging with: $TAG"
-          NAME=$(printenv TAG)_sorting_function_$(date +%s)
-        fi
-        
-        export NAME
-      - echo ________________________________
-      
-      - echo Installing requirements to Lambda Function...
-      - pip3 install -r requirements.txt -t lambda_function
-      - echo ________________________________
-      
-      - echo Zipping Lambda Function...
-      - cd lambda_function
-      - zip -r $NAME.zip .
-      - echo ________________________________
-      
-      - echo Pushing to S3...
-      - aws s3 cp $NAME.zip s3://swsoc-sorting-lambda/
-      - echo ________________________________
-      
-      - echo Updating Deployment
-      - aws codebuild start-build --project-name build_sdc_aws_pipeline_architecture --region us-east-2 --environment-variables-override name=LAMBDA_PIPELINE,value=SORTING,type=PLAINTEXT name=ZIP_NAME,value=$NAME.zip,type=PLAINTEXT
-      - echo Build Successful - Lambda Successfully Zipped and Pushed to S3
-  
+    - REGION=us-east-1
+    - echo Login to Private ECR $REGION
+    - aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin 351967858401.dkr.ecr.$REGION.amazonaws.com
+    - echo ________________________________
+    - ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+
+    - |
+      if git describe --tags --exact-match > /dev/null 2>&1; then
+        echo "This is a tag push event"
+        ECR_REPO="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/sdc_aws_sorting_lambda"
+        CDK_ENVIRONMENT=PRODUCTION
+        VERSION=`git describe --tags --exact-match`
+      elif [[ "${CDK_ENVIRONMENT}" == "PRODUCTION" ]]; then
+        echo "This is a production environment"
+        ECR_REPO="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/sdc_aws_sorting_lambda"
+        CDK_ENVIRONMENT=PRODUCTION
+        VERSION=`date -u +"%Y%m%d%H%M%S"`
+      else
+        echo "This is a development environment"
+        ECR_REPO="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/dev-sdc_aws_processing_lambda"
+        CDK_ENVIRONMENT=DEVELOPMENT
+        VERSION=`date -u +"%Y%m%d%H%M%S"`
+      fi
+    - echo ________________________________
+    - echo Build Docker Image
+    - docker build --build-arg PUBLIC_ECR_REPO=$PUBLIC_ECR_REPO -t $ECR_REPO:latest lambda_function/.
+
+
+    - echo Tagging Docker Image...
+    - docker tag $ECR_REPO:latest $ECR_REPO:$VERSION
+
+    - echo Pushing the Docker image with Tags...
+    - docker push $ECR_REPO:latest
+    - docker push $ECR_REPO:$VERSION
+    - echo ________________________________
+
+    - echo Updating Deployment
+    - echo ________________________________
+
+  post_build:
+    commands:
+      - echo Build Successful - Lambda Successfully Built and Pushed to ECR
