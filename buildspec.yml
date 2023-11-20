@@ -50,7 +50,7 @@ phases:
         VERSION=`date -u +"%Y%m%d%H%M%S"`
       else
         echo "This is a development environment"
-        ECR_REPO="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/dev-sdc_aws_processing_lambda"
+        ECR_REPO="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/dev-sdc_aws_sorting_lambda"
         CDK_ENVIRONMENT=DEVELOPMENT
         VERSION=`date -u +"%Y%m%d%H%M%S"`
       fi
