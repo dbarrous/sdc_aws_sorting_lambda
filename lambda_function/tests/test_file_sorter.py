@@ -8,8 +8,8 @@ from slack_sdk.errors import SlackApiError
 from unittest.mock import patch
 
 # Constants
-os.environ["SDC_AWS_CONFIG_FILE_PATH"] = "lambda_function/config.yaml"
-from lambda_function.file_sorter import file_sorter
+os.environ["SDC_AWS_CONFIG_FILE_PATH"] = "lambda_function/src/config.yaml"
+from src.file_sorter import file_sorter
 from sdc_aws_utils.config import parser
 
 INCOMING_BUCKET = "swsoc-incoming"
